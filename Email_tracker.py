@@ -17,23 +17,6 @@ Usage:
   python3 email_soc_toolkit.py --osint -e target@example.com
   python3 email_soc_toolkit.py --demo --osint --json report.json
   python3 email_soc_toolkit.py --demo --vt-key YOUR_API_KEY
-
-Changelog v2.0 (per code review):
-  [FIX-01] URL domain comparison uses registrable domain (stops paypal.com.evil.xyz bypass)
-  [FIX-02] IP validation uses ipaddress module — rejects invalid IPs, supports IPv6
-  [FIX-03] Network errors separated from "not found" in platform probing
-  [FIX-04] Authentication-Results reads all headers, warns on trust issues
-  [FIX-05] DKIM none → LOW (not MEDIUM); only escalates with DMARC fail
-  [FIX-06] Sending-host check skips known legitimate ESPs (SendGrid, SES, Outlook)
-  [FIX-07] CLEAN verdict replaced with INCONCLUSIVE
-  [FIX-08] Risk score deduplicates same-root-cause findings
-  [FIX-09] MIME body decoding uses proper charset
-  [FIX-10] MITRE mappings based on evidence, not header failures alone
-  [FIX-11] Email validation uses email-validator library
-  [FIX-12] Geolocation uses HTTPS endpoint
-  [FIX-13] Social platform results: FOUND/NOT_FOUND/BLOCKED/RATE_LIMITED/UNKNOWN
-  [FIX-14] "CLEAN" verdict removed — tool limitations noted in output
-
 ⚠️  FOR AUTHORIZED INVESTIGATIONS & UNIVERSITY RESEARCH ONLY
 """
 
@@ -126,10 +109,6 @@ Your PayPal account has been limited. Click <a href="http://fakepaypal.xyz/login
 </body></html>
 """
 
-
-# ══════════════════════════════════════════════════════════════════════════════
-#  SHARED HTTP HELPER
-# ══════════════════════════════════════════════════════════════════════════════
 BROWSER_HEADERS = {
     "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
                   "(KHTML, like Gecko) Chrome/124.0 Safari/537.36",
@@ -155,10 +134,6 @@ def http_get(url: str, timeout: int = 8, json_resp: bool = False,
     except Exception as e:
         return None, None, str(type(e).__name__)
 
-
-# ══════════════════════════════════════════════════════════════════════════════
-#  FIX-01: REGISTRABLE DOMAIN EXTRACTION
-# ══════════════════════════════════════════════════════════════════════════════
 def registrable_domain(value: str) -> str:
     """
     Extract registrable domain (e.g. paypal.com from sub.paypal.com).
@@ -181,10 +156,6 @@ def registrable_domain(value: str) -> str:
     parts = host.split(".")
     return ".".join(parts[-2:]) if len(parts) >= 2 else host
 
-
-# ══════════════════════════════════════════════════════════════════════════════
-#  FIX-02: IP VALIDATION
-# ══════════════════════════════════════════════════════════════════════════════
 def valid_public_ip(value: str) -> bool:
     """[FIX-02] Validates IP using ipaddress module. Supports IPv4 + IPv6."""
     try:
@@ -201,10 +172,6 @@ def extract_ips_from_text(text: str) -> list[str]:
     candidates = ipv4 + ipv6
     return [ip for ip in candidates if valid_public_ip(ip)]
 
-
-# ══════════════════════════════════════════════════════════════════════════════
-#  MODULE A — EMAIL HEADER PARSER
-# ══════════════════════════════════════════════════════════════════════════════
 def parse_email_msg(raw: str) -> email.message.Message:
     return Parser(policy=policy.default).parsestr(raw)
 
@@ -242,12 +209,6 @@ def geolocate_ip(ip: str) -> dict:
             "regionName": "N/A", "isp": "N/A", "org": "N/A",
             "error": err}
 
-
-# ══════════════════════════════════════════════════════════════════════════════
-#  FIX-04: AUTHENTICATION-RESULTS PARSING
-# ══════════════════════════════════════════════════════════════════════════════
-
-# Known legitimate email service providers — FIX-06
 KNOWN_ESP_PATTERNS = [
     "sendgrid", "amazonses", "mailchimp", "outbound.protection.outlook",
     "google", "googlemail", "mailgun", "sparkpost", "mandrill",
@@ -405,7 +366,6 @@ def analyze_phishing(msg: email.message.Message,
             "indicator": "Urgency Language in Subject",
             "detail": f"Keywords: {', '.join(urgency)}"})
 
-    # [FIX-01] URL domain mismatch — registrable domain comparison
     urls = re.findall(r'href=["\']?(https?://[^\s"\'<>]+)', html_body, re.IGNORECASE)
     if urls and lfd_match:
         sender_reg = registrable_domain(claimed_domain)
@@ -417,7 +377,6 @@ def analyze_phishing(msg: email.message.Message,
                     "detail": f"Link domain: {link_reg} | Sender domain: {sender_reg}"})
                 break
 
-    # Body patterns
     cred_patterns = ["enter your password","confirm your password","verify your identity",
                      "update your payment","click here to verify","confirm your account",
                      "validate your email","unusual sign-in"]
@@ -427,7 +386,6 @@ def analyze_phishing(msg: email.message.Message,
             "indicator": "Credential Harvesting Language",
             "detail": f"Patterns found: {'; '.join(found_cred[:3])}"})
 
-    # Hidden text
     hidden = re.findall(
         r'color\s*:\s*(?:white|#fff|#ffffff)|font-size\s*:\s*[01]px',
         html_body, re.IGNORECASE)
@@ -452,10 +410,6 @@ def analyze_phishing(msg: email.message.Message,
 
     return findings
 
-
-# ══════════════════════════════════════════════════════════════════════════════
-#  FIX-07 + FIX-08: RISK SCORE — deduplicated, no CLEAN verdict
-# ══════════════════════════════════════════════════════════════════════════════
 def compute_risk_score(findings: list) -> tuple[int, str]:
     """
     [FIX-08] Deduplicate findings by category to avoid double-counting
@@ -487,10 +441,6 @@ def compute_risk_score(findings: list) -> tuple[int, str]:
 
     return score, verdict
 
-
-# ══════════════════════════════════════════════════════════════════════════════
-#  FIX-10: MITRE ATT&CK MAPPING — evidence-based
-# ══════════════════════════════════════════════════════════════════════════════
 MITRE_MAP = {
     # Evidence → (technique_id, name, requires)
     "Hyperlink Domain Mismatch":        ("T1566.002", "Phishing: Spearphishing Link",       "url_evidence"),
@@ -523,9 +473,6 @@ def map_mitre(findings: list, attachments: list) -> list[tuple]:
     return results
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-#  ATTACHMENT ANALYSIS
-# ══════════════════════════════════════════════════════════════════════════════
 DANGEROUS_EXT = {".exe",".com",".bat",".cmd",".msi",".pif",".scr",".jar",
                  ".js",".jse",".vbs",".vbe",".ps1",".psm1",".sh",
                  ".doc",".dot",".xls",".xlt",".xlam",".ppt",
@@ -587,9 +534,6 @@ def analyze_attachments(msg: email.message.Message) -> list[dict]:
     return results
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-#  URL ANALYSIS — FIX-01 applied
-# ══════════════════════════════════════════════════════════════════════════════
 URL_SHORTENERS = {"bit.ly","tinyurl.com","t.co","goo.gl","ow.ly","short.link",
                   "rebrand.ly","cutt.ly","is.gd","buff.ly","tiny.cc"}
 
@@ -627,9 +571,6 @@ def analyze_urls(urls: list[str], sender_domain: str) -> list[dict]:
     return results
 
 
-# ══════════════════════════════════════════════════════════════════════════════
-#  VIRUSTOTAL (optional)
-# ══════════════════════════════════════════════════════════════════════════════
 def virustotal_check_url(url: str, api_key: str) -> dict:
     url_id = base64.urlsafe_b64encode(url.encode()).decode().rstrip("=")
     data, status, err = http_get(
@@ -774,12 +715,6 @@ def print_header_report(msg, hops, auth, findings, geo_results,
                 print(f"  {C.DIM}         Evidence: {evidence}{C.RESET}")
     print(f"\n  {C.DIM}Reference: https://attack.mitre.org/tactics/TA0001/{C.RESET}")
 
-
-# ══════════════════════════════════════════════════════════════════════════════
-#  MODULE B — OSINT ENGINE
-# ══════════════════════════════════════════════════════════════════════════════
-
-# FIX-11: Use email-validator if available
 def validate_email_addr(addr: str) -> dict:
     try:
         from email_validator import validate_email, EmailNotValidError
