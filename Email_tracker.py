@@ -11,12 +11,12 @@ MODES:
   3. Full Pipeline    — analyze .eml AND auto-run OSINT on sender
 
 Usage:
-  python3 email_soc_toolkit.py --demo
-  python3 email_soc_toolkit.py --file suspicious.eml
-  python3 email_soc_toolkit.py --file suspicious.eml --osint
-  python3 email_soc_toolkit.py --osint -e target@example.com
-  python3 email_soc_toolkit.py --demo --osint --json report.json
-  python3 email_soc_toolkit.py --demo --vt-key YOUR_API_KEY
+  python3 Email_tracker.py --demo
+  python3 Email_tracker.py --file suspicious.eml
+  python3 Email_tracker.py --file suspicious.eml --osint
+  python3 Email_tracker.py --osint -e target@example.com
+  python3 Email_tracker.py --demo --osint --json report.json
+  python3 Email_tracker.py --demo --vt-key YOUR_API_KEY
 ⚠️  FOR AUTHORIZED INVESTIGATIONS & UNIVERSITY RESEARCH ONLY
 """
 
